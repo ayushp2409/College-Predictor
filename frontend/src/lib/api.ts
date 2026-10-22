@@ -1,6 +1,10 @@
 const getApiBase = (): string => {
   let url = process.env.NEXT_PUBLIC_API_URL || "http://127.0.0.1:8000/api";
-  return url.trim().replace(/\/+$/, "");
+  url = url.trim().replace(/\/+$/, "");
+  if (!url.endsWith("/api")) {
+    url = `${url}/api`;
+  }
+  return url;
 };
 
 export const API_BASE = getApiBase();

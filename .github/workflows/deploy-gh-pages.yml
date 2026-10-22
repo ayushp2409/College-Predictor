@@ -41,7 +41,7 @@ jobs:
           GITHUB_ACTIONS: "true"
           DEPLOY_TARGET: "gh-pages"
           NEXT_PUBLIC_BASE_PATH: "/College-Predictor"
-          NEXT_PUBLIC_API_URL: ${{ secrets.NEXT_PUBLIC_API_URL || 'https://mhtcet-college-predictor.onrender.com/api' }}
+          NEXT_PUBLIC_API_URL: ${{ secrets.NEXT_PUBLIC_API_URL || 'https://college-predictor-72c3.onrender.com/api' }}
         run: |
           cd frontend
           npm run build
