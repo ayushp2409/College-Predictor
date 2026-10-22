@@ -52,6 +52,8 @@ class ChoiceListItem(BaseModel):
     seat_type: str = "GOPENS"
     likelihood: str = "Likely"
     closing_percentile: float
+    projected_cutoff: Optional[float] = None
+    projected_year: Optional[int] = 2025
     closing_rank: Optional[int] = None
     total_annual_fee: Optional[float] = None
     autonomy_status: Optional[str] = None
@@ -311,6 +313,7 @@ def export_cap_option_form_csv(payload: CapOptionFormExportRequest):
         "Autonomy Status",
         "Likelihood",
         "Historical Closing Cutoff (%)",
+        "Projected Cutoff (%)",
         "Closing Rank",
         "Annual Fee (INR)"
     ])
@@ -326,6 +329,7 @@ def export_cap_option_form_csv(payload: CapOptionFormExportRequest):
             choice.autonomy_status or "Autonomous",
             choice.likelihood,
             f"{choice.closing_percentile:.2f}",
+            f"{choice.projected_cutoff:.2f}" if choice.projected_cutoff else f"{choice.closing_percentile:.2f}",
             choice.closing_rank or "N/A",
             int(choice.total_annual_fee) if choice.total_annual_fee else "CAP Fee Matrix"
         ])
@@ -444,13 +448,14 @@ def export_cap_option_form_pdf(payload: CapOptionFormExportRequest):
 
     # 3. Preference Table
     choice_table_data = [
-        ["Pref #", "Choice Code (9-Digit)", "Inst Code", "Institute Name", "Course / Branch Name", "Quota", "Cutoff (%)"]
+        ["Pref #", "Choice Code (9-Digit)", "Inst Code", "Institute Name", "Course / Branch Name", "Quota", "Cutoff", "Proj 2025"]
     ]
 
     for c in payload.choices:
-        inst_p = Paragraph(f"<b>{c.college_name[:36]}</b>", table_cell_style)
-        branch_p = Paragraph(c.branch_name[:28], table_cell_style)
+        inst_p = Paragraph(f"<b>{c.college_name[:34]}</b>", table_cell_style)
+        branch_p = Paragraph(c.branch_name[:26], table_cell_style)
         code_p = Paragraph(f"<b>{c.choice_code}</b>", table_code_style)
+        proj_val = f"{c.projected_cutoff:.2f}%" if c.projected_cutoff else f"{c.closing_percentile:.2f}%"
 
         choice_table_data.append([
             str(c.preference_no),
@@ -459,10 +464,11 @@ def export_cap_option_form_pdf(payload: CapOptionFormExportRequest):
             inst_p,
             branch_p,
             c.seat_type,
-            f"{c.closing_percentile:.2f}%"
+            f"{c.closing_percentile:.2f}%",
+            proj_val
         ])
 
-    col_widths = [36, 92, 50, 160, 128, 45, 45]
+    col_widths = [32, 85, 45, 145, 115, 42, 46, 46]
     choice_table = Table(choice_table_data, colWidths=col_widths, repeatRows=1)
     choice_table.setStyle(TableStyle([
         ('BACKGROUND', (0, 0), (-1, 0), colors.HexColor("#1e3a8a")),

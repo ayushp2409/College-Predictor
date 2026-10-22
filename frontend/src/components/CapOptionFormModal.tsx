@@ -33,45 +33,48 @@ export default function CapOptionFormModal({
   const [copiedCode, setCopiedCode] = useState<string | null>(null);
   const [exporting, setExporting] = useState<"pdf" | "csv" | null>(null);
 
-  // Convert initial PredictionItems to ChoiceListItems
-  const [choices, setChoices] = useState<ChoiceListItem[]>(() => {
-    return (initialItems || []).map((item, idx) => ({
-      preference_no: idx + 1,
+  // Convert and sort initial PredictionItems in descending order according to projected cutoff
+  const mapAndSortByProjectedCutoff = (items: PredictionItem[], seatCategory: string): ChoiceListItem[] => {
+    const list: ChoiceListItem[] = (items || []).map((item) => ({
+      preference_no: 1,
       choice_code: item.choice_code || `${item.college_code}${item.branch_code}`,
       college_code: item.college_code,
       college_name: item.college_name,
       city: item.city,
       branch_code: item.branch_code,
       branch_name: item.branch_name,
-      seat_type: item.seat_type || category,
+      seat_type: item.seat_type || seatCategory,
       likelihood: item.likelihood,
       closing_percentile: item.closing_percentile,
+      projected_cutoff: item.projected_cutoff ?? item.closing_percentile,
+      projected_year: item.projected_year || 2025,
       closing_rank: item.closing_rank,
       total_annual_fee: item.total_annual_fee,
       autonomy_status: item.autonomy_status,
     }));
-  });
 
-  // Keep choices synchronized when initialItems or category changes
+    // Sort strictly in descending order of projected cutoff (falling back to closing_percentile)
+    list.sort((a, b) => {
+      const projA = a.projected_cutoff ?? a.closing_percentile;
+      const projB = b.projected_cutoff ?? b.closing_percentile;
+      return projB - projA;
+    });
+
+    list.forEach((c, idx) => {
+      c.preference_no = idx + 1;
+    });
+
+    return list;
+  };
+
+  const [choices, setChoices] = useState<ChoiceListItem[]>(() =>
+    mapAndSortByProjectedCutoff(initialItems, category)
+  );
+
+  // Keep choices synchronized and sorted descending when initialItems or category changes
   useEffect(() => {
     if (initialItems && initialItems.length > 0) {
-      setChoices(
-        initialItems.map((item, idx) => ({
-          preference_no: idx + 1,
-          choice_code: item.choice_code || `${item.college_code}${item.branch_code}`,
-          college_code: item.college_code,
-          college_name: item.college_name,
-          city: item.city,
-          branch_code: item.branch_code,
-          branch_name: item.branch_name,
-          seat_type: item.seat_type || category,
-          likelihood: item.likelihood,
-          closing_percentile: item.closing_percentile,
-          closing_rank: item.closing_rank,
-          total_annual_fee: item.total_annual_fee,
-          autonomy_status: item.autonomy_status,
-        }))
-      );
+      setChoices(mapAndSortByProjectedCutoff(initialItems, category));
     }
   }, [initialItems, category]);
 
@@ -111,24 +114,29 @@ export default function CapOptionFormModal({
     setChoices(newChoices);
   };
 
-  // Sort strictly in descending order of cutoff percentile
+  // Sort strictly in descending order of projected cutoff percentile
   const handleSortDescending = () => {
-    const sorted = [...choices].sort((a, b) => b.closing_percentile - a.closing_percentile);
+    const sorted = [...choices].sort((a, b) => {
+      const projA = a.projected_cutoff ?? a.closing_percentile;
+      const projB = b.projected_cutoff ?? b.closing_percentile;
+      return projB - projA;
+    });
     sorted.forEach((c, idx) => (c.preference_no = idx + 1));
     setChoices(sorted);
   };
 
-  // Official CAP Strategy: Ambitious (Reach) descending -> Target (Borderline) descending -> Safe (Likely) descending
+  // Official CAP Strategy: Ambitious (Reach) descending by projected -> Target (Borderline) descending by projected -> Safe (Likely) descending by projected
   const handleAutoArrangeStrategy = () => {
+    const getProj = (c: ChoiceListItem) => c.projected_cutoff ?? c.closing_percentile;
     const reach = choices
       .filter((c) => c.likelihood === "Reach")
-      .sort((a, b) => b.closing_percentile - a.closing_percentile);
+      .sort((a, b) => getProj(b) - getProj(a));
     const borderline = choices
       .filter((c) => c.likelihood === "Borderline")
-      .sort((a, b) => b.closing_percentile - a.closing_percentile);
+      .sort((a, b) => getProj(b) - getProj(a));
     const likely = choices
       .filter((c) => c.likelihood === "Likely")
-      .sort((a, b) => b.closing_percentile - a.closing_percentile);
+      .sort((a, b) => getProj(b) - getProj(a));
 
     const reordered = [...reach, ...borderline, ...likely];
     reordered.forEach((c, idx) => (c.preference_no = idx + 1));
@@ -254,10 +262,10 @@ export default function CapOptionFormModal({
               onClick={handleSortDescending}
               disabled={choices.length === 0}
               className="px-3.5 py-1.5 rounded-lg bg-slate-100 hover:bg-slate-200 text-slate-700 border border-slate-300 text-xs font-bold flex items-center gap-1.5 transition-colors"
-              title="Sort all choices strictly in descending order of closing cutoff percentile"
+              title="Sort all choices strictly in descending order of projected cutoff percentile"
             >
               <ArrowUpDown className="w-3.5 h-3.5" />
-              <span>Sort Descending by Cutoff</span>
+              <span>Sort Descending by Projected Cutoff</span>
             </button>
           </div>
 
@@ -294,6 +302,19 @@ export default function CapOptionFormModal({
             </div>
           ) : (
             <div className="border border-slate-200 rounded-xl overflow-hidden shadow-2xs">
+              {/* Descending Sort Notice Banner */}
+              <div className="px-4 py-2 bg-gradient-to-r from-blue-50 to-indigo-50 border-b border-blue-200 flex items-center justify-between text-xs text-blue-900">
+                <div className="flex items-center gap-2 font-semibold">
+                  <Sparkles className="w-4 h-4 text-blue-700 shrink-0" />
+                  <span>
+                    Choices sorted in <b>descending order</b> according to <b>Projected {choices[0]?.projected_year || 2025} Cutoff</b>.
+                  </span>
+                </div>
+                <span className="text-[11px] text-blue-600 font-medium hidden sm:inline">
+                  Highest cutoff options prioritized as top preferences
+                </span>
+              </div>
+
               <div className="overflow-x-auto">
                 <table className="w-full text-left text-xs border-collapse">
                   <thead>
@@ -302,10 +323,11 @@ export default function CapOptionFormModal({
                       <th className="py-2.5 px-3 w-36">Choice Code (9-Digit)</th>
                       <th className="py-2.5 px-3">Institute & Location</th>
                       <th className="py-2.5 px-3">Course / Branch</th>
-                      <th className="py-2.5 px-3 w-24">Quota</th>
-                      <th className="py-2.5 px-3 w-28 text-right">Cutoff (%)</th>
-                      <th className="py-2.5 px-3 w-28 text-center">Likelihood</th>
-                      <th className="py-2.5 px-3 w-24 text-center">Reorder</th>
+                      <th className="py-2.5 px-3 w-20">Quota</th>
+                      <th className="py-2.5 px-3 w-28 text-right">Projected (%)</th>
+                      <th className="py-2.5 px-3 w-24 text-right">2024 Cutoff</th>
+                      <th className="py-2.5 px-3 w-24 text-center">Likelihood</th>
+                      <th className="py-2.5 px-3 w-20 text-center">Reorder</th>
                     </tr>
                   </thead>
                   <tbody className="divide-y divide-slate-200 bg-white">
@@ -362,9 +384,19 @@ export default function CapOptionFormModal({
                           </span>
                         </td>
 
-                        {/* Cutoff */}
+                        {/* Projected Cutoff */}
                         <td className="py-2.5 px-3 text-right">
-                          <span className="font-extrabold text-slate-900">
+                          <span className="font-extrabold text-blue-700 font-mono text-xs">
+                            {(c.projected_cutoff ?? c.closing_percentile).toFixed(2)}%
+                          </span>
+                          <span className="block text-[9px] text-indigo-500 font-bold uppercase">
+                            {c.projected_year || 2025} Proj
+                          </span>
+                        </td>
+
+                        {/* 2024 Historical Cutoff */}
+                        <td className="py-2.5 px-3 text-right">
+                          <span className="font-semibold text-slate-600">
                             {c.closing_percentile.toFixed(2)}%
                           </span>
                         </td>

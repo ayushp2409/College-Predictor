@@ -78,6 +78,8 @@ export interface ChoiceListItem {
   seat_type: string;
   likelihood: "Likely" | "Borderline" | "Reach";
   closing_percentile: number;
+  projected_cutoff?: number;
+  projected_year?: number;
   closing_rank?: number | null;
   total_annual_fee?: number | null;
   autonomy_status?: string | null;

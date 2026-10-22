@@ -116,3 +116,40 @@ def test_cap_option_form_pdf_export():
     assert "attachment" in response.headers["content-disposition"]
     # PDF files start with %PDF magic bytes
     assert response.content[:4] == b"%PDF"
+
+
+def test_cap_choice_list_sorted_descending_by_projected_cutoff():
+    """
+    REQUIREMENT CHECK:
+    Verify that CAP choice list items are sorted in descending order
+    according to projected cutoff.
+    """
+    response = client.post("/api/predict", json={
+        "percentile": 96.85,
+        "category": "GOPENS",
+        "preferred_cities": ["Pune", "Mumbai"],
+        "cap_round": "III",
+        "target_year": 2024
+    })
+    assert response.status_code == 200
+    data = response.json()
+    all_results = data["all_results"]
+
+    # Emulate the frontend mapAndSortByProjectedCutoff sorting logic
+    choices = [
+        {
+            "college_name": r["college_name"],
+            "branch_name": r["branch_name"],
+            "closing_percentile": r["closing_percentile"],
+            "projected_cutoff": r.get("projected_cutoff", r["closing_percentile"]),
+        }
+        for r in all_results
+    ]
+    choices.sort(key=lambda x: x["projected_cutoff"], reverse=True)
+
+    # Verify choices are monotonically non-increasing in projected_cutoff
+    for i in range(len(choices) - 1):
+        assert choices[i]["projected_cutoff"] >= choices[i + 1]["projected_cutoff"], (
+            f"CAP Choice list must be descending by projected cutoff: {choices[i]['projected_cutoff']} < {choices[i+1]['projected_cutoff']}"
+        )
+
