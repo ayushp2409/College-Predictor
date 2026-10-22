@@ -1,4 +1,9 @@
-const API_BASE = process.env.NEXT_PUBLIC_API_URL || "http://127.0.0.1:8000/api";
+const getApiBase = (): string => {
+  let url = process.env.NEXT_PUBLIC_API_URL || "http://127.0.0.1:8000/api";
+  return url.trim().replace(/\/+$/, "");
+};
+
+export const API_BASE = getApiBase();
 
 export interface CandidateInput {
   percentile: number;

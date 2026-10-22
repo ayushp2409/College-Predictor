@@ -79,23 +79,25 @@ app = FastAPI(
     lifespan=lifespan
 )
 
-# CORS Middleware - allowing any localhost/127.0.0.1 port for student & admin UIs
+# CORS Middleware - allowing localhost, GitHub Pages, Render, and cloud origins
 app.add_middleware(
     CORSMiddleware,
     allow_origins=settings.CORS_ORIGINS,
-    allow_origin_regex=r"^https?://(localhost|127\.0\.0\.1)(:\d+)?$",
+    allow_origin_regex=r"^https?://.*$",
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
 )
 
-# Include API Routers
-app.include_router(routes_auth.router, prefix=settings.API_V1_PREFIX)
-app.include_router(routes_predict.router, prefix=settings.API_V1_PREFIX)
-app.include_router(routes_colleges.router, prefix=settings.API_V1_PREFIX)
-app.include_router(routes_compare.router, prefix=settings.API_V1_PREFIX)
-app.include_router(routes_shortlist.router, prefix=settings.API_V1_PREFIX)
-app.include_router(routes_admin.router, prefix=settings.API_V1_PREFIX)
+# Include API Routers both with prefix="/api" and without prefix ("")
+# This ensures all endpoints resolve whether client calls /api/predict or /predict directly
+for prefix in [settings.API_V1_PREFIX, ""]:
+    app.include_router(routes_auth.router, prefix=prefix)
+    app.include_router(routes_predict.router, prefix=prefix)
+    app.include_router(routes_colleges.router, prefix=prefix)
+    app.include_router(routes_compare.router, prefix=prefix)
+    app.include_router(routes_shortlist.router, prefix=prefix)
+    app.include_router(routes_admin.router, prefix=prefix)
 
 @app.get("/")
 def root():

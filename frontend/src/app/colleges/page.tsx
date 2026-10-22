@@ -6,6 +6,7 @@ import {
   Search, MapPin, Building, Award, ExternalLink, IndianRupee,
   Layers, X, GraduationCap, ArrowDownWideNarrow, CheckCircle
 } from "lucide-react";
+import { API_BASE } from "@/lib/api";
 
 export default function CollegesPage() {
   const [colleges, setColleges] = useState<any[]>([]);
@@ -17,8 +18,6 @@ export default function CollegesPage() {
   const [selectedCollegeId, setSelectedCollegeId] = useState<number | null>(null);
   const [collegeDetails, setCollegeDetails] = useState<any | null>(null);
   const [detailsLoading, setDetailsLoading] = useState(false);
-
-  const API_BASE = process.env.NEXT_PUBLIC_API_URL || "http://127.0.0.1:8000/api";
 
   useEffect(() => {
     fetch(`${API_BASE}/colleges/cities/list`)
