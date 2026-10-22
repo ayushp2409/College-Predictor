@@ -34,6 +34,10 @@ frontend/.env*.local
 .env.*
 !.env.example
 
+# ML model artifacts
+model_artifacts/
+*.pkl
+
 # OS files
 .DS_Store
 Thumbs.db

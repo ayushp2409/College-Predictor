@@ -130,3 +130,45 @@ def test_college_details_courses_displayed_in_descending_order(db_session: Sessi
         assert cutoffs[i] >= cutoffs[i + 1], (
             f"Branches must be in descending order: {cutoffs[i]} should be >= {cutoffs[i+1]}"
         )
+
+
+def test_no_duplicate_branch_instances_for_same_college_and_latest_year_only():
+    """
+    REGRESSION CHECK:
+    Ensure predictor never produces duplicate instances of the same branch
+    (e.g., PICT Computer appearing multiple times at 93, 82, etc.).
+    Only the single authoritative latest-year cutoff (or projected cutoff) is returned.
+    """
+    response = client.post("/api/predict", json={
+        "percentile": 96.85,
+        "category": "GOPENS",
+        "preferred_cities": ["Pune", "Mumbai"],
+        "preferred_branches": ["Computer Engineering", "Information Technology"],
+        "cap_round": "III",
+        "target_year": 2024
+    })
+    assert response.status_code == 200
+    data = response.json()
+    all_results = data["all_results"]
+
+    # Verify every (college_id, branch_id) is unique
+    seen_pairs = set()
+    for item in all_results:
+        pair = (item["college_id"], item["branch_id"])
+        assert pair not in seen_pairs, f"Duplicate branch instance found for {item['college_name']} - {item['branch_name']}"
+        seen_pairs.add(pair)
+        # Verify year is strictly latest (2024)
+        assert item["year"] == 2024, f"Cutoff year should be latest (2024), got {item['year']}"
+        # Category must be GOPENS
+        assert item["category"] == "GOPENS"
+        # Projected cutoff must be present
+        assert "projected_cutoff" in item
+        assert item["projected_cutoff"] >= item["closing_percentile"]
+
+    # PICT Computer Engineering must be exactly one instance with cutoff 99.55%
+    pict_comp = [r for r in all_results if r["college_code"] == "6271" and r["branch_name"] == "Computer Engineering"]
+    assert len(pict_comp) == 1
+    assert pict_comp[0]["closing_percentile"] == 99.55
+    # Must NOT be 93 or 82
+    assert pict_comp[0]["closing_percentile"] not in [92.35, 93.05, 82.05, 82.75]
+

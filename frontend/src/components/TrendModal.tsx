@@ -1,6 +1,6 @@
 "use client";
 
-import { X, TrendingUp, Calendar, Award } from "lucide-react";
+import { X, TrendingUp, Calendar, Award, Sparkles } from "lucide-react";
 import { PredictionItem } from "@/lib/api";
 import {
   ResponsiveContainer,
@@ -21,17 +21,33 @@ interface TrendModalProps {
 export default function TrendModal({ item, onClose }: TrendModalProps) {
   if (!item) return null;
 
-  // Prepare chart data from trend array
-  const chartData = item.trend.map((t) => ({
-    label: `${t.year} R${t.cap_round}`,
-    cutoff: t.closing_percentile,
-    rank: t.closing_rank,
-  }));
+  // Prepare chart data from trend array including projected year
+  const chartData = [
+    ...item.trend.map((t) => ({
+      label: `${t.year} R${t.cap_round}`,
+      cutoff: t.closing_percentile,
+      rank: t.closing_rank,
+      isProjected: false,
+    })),
+    ...(item.projected_cutoff
+      ? [
+          {
+            label: `${item.projected_year || 2025} (Proj)`,
+            cutoff: item.projected_cutoff,
+            rank: undefined,
+            isProjected: true,
+          },
+        ]
+      : []),
+  ];
 
   // Min and max for Y-axis domain
-  const cutoffs = item.trend.map((t) => t.closing_percentile);
-  const minVal = cutoffs.length > 0 ? Math.floor(Math.min(...cutoffs) - 2) : 50;
-  const maxVal = cutoffs.length > 0 ? Math.min(100, Math.ceil(Math.max(...cutoffs) + 1)) : 100;
+  const allCutoffVals = [
+    ...item.trend.map((t) => t.closing_percentile),
+    ...(item.projected_cutoff ? [item.projected_cutoff] : []),
+  ];
+  const minVal = allCutoffVals.length > 0 ? Math.floor(Math.min(...allCutoffVals) - 2) : 50;
+  const maxVal = allCutoffVals.length > 0 ? Math.min(100, Math.ceil(Math.max(...allCutoffVals) + 1)) : 100;
 
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-900/60 backdrop-blur-xs animate-fadeIn">
@@ -139,6 +155,21 @@ export default function TrendModal({ item, onClose }: TrendModalProps) {
                     </td>
                   </tr>
                 ))}
+                {item.projected_cutoff && (
+                  <tr className="bg-gradient-to-r from-blue-50 to-indigo-50 font-semibold text-blue-900 border-t border-blue-200">
+                    <td className="py-2.5 px-3 font-extrabold flex items-center gap-1">
+                      <Sparkles className="w-3.5 h-3.5 text-blue-600" />
+                      {item.projected_year || 2025} (Projected)
+                    </td>
+                    <td className="py-2.5 px-3 text-blue-700 font-bold">Projected (Round {item.cap_round})</td>
+                    <td className="py-2.5 px-3 font-extrabold text-blue-800 font-mono">
+                      {item.projected_cutoff.toFixed(2)}%
+                    </td>
+                    <td className="py-2.5 px-3 text-blue-600 font-medium">
+                      Multi-year Trend Projection
+                    </td>
+                  </tr>
+                )}
               </tbody>
             </table>
           </div>

@@ -46,6 +46,9 @@ export interface PredictionItem {
   cap_round: string;
   year: number;
   closing_percentile: number;
+  projected_cutoff?: number;
+  projected_year?: number;
+  projected_margin?: number;
   opening_percentile: number;
   closing_rank?: number;
   opening_rank?: number;

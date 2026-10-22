@@ -105,6 +105,8 @@ class PredictorEngine:
         Returns grouped predictions (Likely, Borderline, Reach), metrics, and alternatives.
         """
         applicable_categories = resolve_candidate_categories(profile)
+        target_year = profile.target_year or 2024
+        target_round = profile.cap_round if (profile.cap_round and profile.cap_round != "All") else "III"
         
         # Build query for cutoffs
         query = (
@@ -115,15 +117,9 @@ class PredictorEngine:
             .join(Branch, AdmissionCutoff.branch_id == Branch.id)
             .outerjoin(CollegeFee, College.id == CollegeFee.college_id)
             .filter(AdmissionCutoff.category.in_(applicable_categories))
+            .filter(AdmissionCutoff.year == target_year)
+            .filter(AdmissionCutoff.cap_round == target_round)
         )
-
-        # Target year or latest available year
-        if profile.target_year:
-            query = query.filter(AdmissionCutoff.year == profile.target_year)
-
-        # CAP Round filter
-        if profile.cap_round and profile.cap_round != "All":
-            query = query.filter(AdmissionCutoff.cap_round == profile.cap_round)
 
         # City filters
         if profile.preferred_cities and len(profile.preferred_cities) > 0:
@@ -149,8 +145,10 @@ class PredictorEngine:
 
         results = query.all()
 
-        # Deduplicate to best match per (college_id, branch_id)
-        # Choosing the highest matching probability / best round cutoff
+        # Deduplicate to strictly ONE single authoritative prediction per (college_id, branch_id).
+        # Priority rules:
+        # 1. Exact candidate primary category match (profile.category) over fallback category.
+        # 2. If categories match, pick the higher probability.
         seen = {}
         for cutoff, college, branch, fee in results:
             key = (college.id, branch.id)
@@ -189,6 +187,27 @@ class PredictorEngine:
                 for t in trend_records
             ]
 
+            # Compute Projected Cutoff for upcoming 2025/2026 admissions:
+            # Uses multi-year regression drift (2022 -> 2024) for the active round.
+            p_2024 = cutoff.closing_percentile
+            p_2022 = None
+            p_2023 = None
+            for t in trend_records:
+                if t[0] == 2022 and t[1] == cutoff.cap_round:
+                    p_2022 = t[2]
+                elif t[0] == 2023 and t[1] == cutoff.cap_round:
+                    p_2023 = t[2]
+
+            if p_2022 is not None:
+                annual_drift = (p_2024 - p_2022) / 2.0
+            elif p_2023 is not None:
+                annual_drift = p_2024 - p_2023
+            else:
+                annual_drift = 0.15
+
+            annual_drift = max(-1.0, min(1.5, annual_drift))
+            projected_cutoff = round(min(99.98, max(5.0, p_2024 + annual_drift)), 2)
+
             # Construct official 9-digit Maharashtra DTE Choice Code
             choice_code = f"{college.college_code}{branch.branch_code}"
             if "TFWS" in cutoff.category and not choice_code.endswith("T"):
@@ -215,6 +234,9 @@ class PredictorEngine:
                 "cap_round": cutoff.cap_round,
                 "year": cutoff.year,
                 "closing_percentile": cutoff.closing_percentile,
+                "projected_cutoff": projected_cutoff,
+                "projected_year": 2025,
+                "projected_margin": round(profile.percentile - projected_cutoff, 2),
                 "opening_percentile": cutoff.opening_percentile,
                 "closing_rank": cutoff.closing_rank,
                 "opening_rank": cutoff.opening_rank,
@@ -228,8 +250,17 @@ class PredictorEngine:
                 "disclaimer": "Official historical cutoff indicator only. Allotments are subject to Maharashtra State CET Cell CAP rules and seat matrices."
             }
 
-            if key not in seen or seen[key]["probability"] < prob:
+            is_primary_cat = (cutoff.category == profile.category.upper())
+
+            if key not in seen:
                 seen[key] = item
+            else:
+                existing_is_primary = (seen[key]["category"] == profile.category.upper())
+                if is_primary_cat and not existing_is_primary:
+                    seen[key] = item
+                elif is_primary_cat == existing_is_primary:
+                    if seen[key]["probability"] < prob:
+                        seen[key] = item
 
         all_matches = list(seen.values())
 
@@ -262,15 +293,23 @@ class PredictorEngine:
 
     def find_alternatives(self, profile: CandidateProfile, current_matches: List[Dict[str, Any]]) -> Dict[str, List[Dict[str, Any]]]:
         """
-        Suggest alternatives:
-        1. Alternative branches in the same top colleges where candidate is likely to get in.
+        Suggest true alternative options:
+        1. Alternative branches in the same premier institutions where candidate had 'Reach'
+           - Excludes the candidate's existing branches to prevent redundant duplicate suggestions.
+           - Strictly filters by candidate's primary category (never leaks SC/ST 82/93 into OPEN).
+           - Enforces the latest reference year (2024) and final round (Round III).
+           - Deduplicates to at most one clean entry per (college, branch).
         2. Alternative colleges in the same cities for the preferred branches.
         """
         alternative_branches = []
         alternative_colleges = []
 
-        # Find top colleges where candidate had 'Reach' for CS/IT, but might get ENTC/Mech/Civil
+        # Collect branches already matched to never suggest the same branch
+        existing_branch_ids = {m["branch_id"] for m in current_matches}
         reach_colleges = {m["college_id"]: m["college_name"] for m in current_matches if m["likelihood"] == "Reach"}
+
+        target_year = profile.target_year or 2024
+        target_round = profile.cap_round if (profile.cap_round and profile.cap_round != "All") else "III"
 
         if reach_colleges:
             alt_cutoffs = (
@@ -278,23 +317,42 @@ class PredictorEngine:
                 .join(College, AdmissionCutoff.college_id == College.id)
                 .join(Branch, AdmissionCutoff.branch_id == Branch.id)
                 .filter(
-                    AdmissionCutoff.college_id.in_(list(reach_colleges.keys())[:5]),
-                    AdmissionCutoff.closing_percentile <= profile.percentile,
-                    AdmissionCutoff.year == (profile.target_year or 2024)
+                    AdmissionCutoff.college_id.in_(list(reach_colleges.keys())[:6]),
+                    ~AdmissionCutoff.branch_id.in_(existing_branch_ids),
+                    AdmissionCutoff.category == profile.category.upper(),
+                    AdmissionCutoff.year == target_year,
+                    AdmissionCutoff.cap_round == target_round,
+                    AdmissionCutoff.closing_percentile <= profile.percentile
                 )
-                .limit(6)
+                .order_by(AdmissionCutoff.closing_percentile.desc())
                 .all()
             )
 
+            seen_alt = set()
             for c, col, br in alt_cutoffs:
+                alt_key = (col.id, br.id)
+                if alt_key in seen_alt:
+                    continue
+                seen_alt.add(alt_key)
+
+                projected_cutoff = round(min(99.98, max(5.0, c.closing_percentile + 0.15)), 2)
+
                 alternative_branches.append({
                     "college_id": col.id,
                     "college_name": col.name,
+                    "short_name": col.short_name or col.name[:25],
                     "city": col.city,
+                    "branch_id": br.id,
                     "branch_name": br.name,
+                    "category": c.category,
                     "closing_percentile": c.closing_percentile,
-                    "reason": f"At {col.short_name or col.name}, your percentile meets the cutoff for {br.name}."
+                    "projected_cutoff": projected_cutoff,
+                    "projected_year": 2025,
+                    "reason": f"At {col.short_name or col.name}, your percentile ({profile.percentile:.2f}%) qualifies for {br.name} (Cutoff: {c.closing_percentile:.2f}%)."
                 })
+
+                if len(alternative_branches) >= 6:
+                    break
 
         return {
             "alternative_branches": alternative_branches,

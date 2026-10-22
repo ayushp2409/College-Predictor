@@ -302,13 +302,18 @@ export default function HomePage() {
                   If your preferred branch is a "Reach", you comfortably qualify for these aligned engineering branches at premier institutions:
                 </p>
                 <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3">
-                  {predictions.alternatives.alternative_branches.map((alt, idx) => (
+                  {predictions.alternatives.alternative_branches.map((alt: any, idx: number) => (
                     <div key={idx} className="p-3 bg-white rounded-xl border border-blue-100 shadow-2xs text-xs space-y-1">
                       <span className="font-extrabold text-slate-900 block">{alt.college_name}</span>
                       <div className="flex items-center justify-between text-blue-700 font-bold">
                         <span>{alt.branch_name}</span>
                         <span>Cutoff: {alt.closing_percentile.toFixed(2)}%</span>
                       </div>
+                      {alt.projected_cutoff && (
+                        <div className="text-[11px] font-semibold text-indigo-700">
+                          Projected {alt.projected_year || 2025}: {alt.projected_cutoff.toFixed(2)}%
+                        </div>
+                      )}
                       <p className="text-[11px] text-slate-500">{alt.reason}</p>
                     </div>
                   ))}

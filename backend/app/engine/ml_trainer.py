@@ -17,8 +17,8 @@ from backend.app.db.models import (
 
 logger = logging.getLogger(__name__)
 
-# Ensure model directory exists
-os.makedirs(settings.MODEL_DIR, exist_ok=True)
+def _utc_now():
+    return datetime.datetime.now(datetime.timezone.utc)
 
 class MLTrainerService:
     def __init__(self, db: Session):
@@ -64,8 +64,8 @@ class MLTrainerService:
             dataset_version_id=dataset_version_id,
             status="running",
             parameters=hyperparams,
-            logs=f"[{datetime.datetime.utcnow().isoformat()}] Job created. Initializing data extraction...\n",
-            started_at=datetime.datetime.utcnow()
+            logs=f"[{_utc_now().isoformat()}] Job created. Initializing data extraction...\n",
+            started_at=_utc_now()
         )
         self.db.add(job)
         self.db.commit()
@@ -79,7 +79,7 @@ class MLTrainerService:
                     f"Insufficient data for training: Found {len(cutoffs)} records, minimum 10 required."
                 )
 
-            job.logs += f"[{datetime.datetime.utcnow().isoformat()}] Loaded {len(cutoffs)} cutoff records for training.\n"
+            job.logs += f"[{_utc_now().isoformat()}] Loaded {len(cutoffs)} cutoff records for training.\n"
 
             # Step 2: Feature preparation
             import numpy as np
@@ -113,7 +113,7 @@ class MLTrainerService:
             X_train, X_test = X[train_idx], X[test_idx]
             y_train, y_test = y[train_idx], y[test_idx]
 
-            job.logs += f"[{datetime.datetime.utcnow().isoformat()}] Split data: {len(X_train)} train, {len(X_test)} test.\n"
+            job.logs += f"[{_utc_now().isoformat()}] Split data: {len(X_train)} train, {len(X_test)} test.\n"
 
             # Step 3 & 4: Fit regression model using NumPy (pure numeric, avoiding WDAC C-extension DLL blocks)
             # Features: Bias, Year normalized, Round number, Opening percentile, Spread
@@ -127,7 +127,7 @@ class MLTrainerService:
             I[0, 0] = 0.0  # Do not regularize bias
             weights = np.linalg.solve(X_train_b.T @ X_train_b + alpha * I, X_train_b.T @ y_train)
 
-            job.logs += f"[{datetime.datetime.utcnow().isoformat()}] Model fitting completed. Trained Ridge/Empirical Bayes weights.\n"
+            job.logs += f"[{_utc_now().isoformat()}] Model fitting completed. Trained Ridge/Empirical Bayes weights.\n"
 
             # Step 4: Evaluate
             y_pred = X_test_b @ weights
@@ -153,10 +153,10 @@ class MLTrainerService:
                 "validation_passed": (mae < 5.0 and r2 > 0.60)
             }
 
-            job.logs += f"[{datetime.datetime.utcnow().isoformat()}] Evaluation metrics: MAE={mae:.4f}, RMSE={rmse:.4f}, R²={r2:.4f}, AccuracyWithin2%={top3_recall:.4f}\n"
+            job.logs += f"[{_utc_now().isoformat()}] Evaluation metrics: MAE={mae:.4f}, RMSE={rmse:.4f}, R²={r2:.4f}, AccuracyWithin2%={top3_recall:.4f}\n"
 
             # Step 5: Save model artifact
-            timestamp = datetime.datetime.utcnow().strftime("%Y%m%d_%H%M%S")
+            timestamp = _utc_now().strftime("%Y%m%d_%H%M%S")
             model_version = f"v_{algorithm[:4]}_{timestamp}"
             artifact_file = os.path.join(settings.MODEL_DIR, f"{model_version}.pkl")
             
@@ -169,7 +169,7 @@ class MLTrainerService:
             with open(artifact_file, "wb") as f:
                 pickle.dump(model_payload, f)
 
-            job.logs += f"[{datetime.datetime.utcnow().isoformat()}] Artifact saved to {artifact_file}\n"
+            job.logs += f"[{_utc_now().isoformat()}] Artifact saved to {artifact_file}\n"
 
             # Step 6: Create PredictionModel record (CANDIDATE ONLY)
             cand_model = PredictionModel(
@@ -189,7 +189,7 @@ class MLTrainerService:
             job.model_id = cand_model.id
             job.status = "completed"
             job.metrics = metrics
-            job.completed_at = datetime.datetime.utcnow()
+            job.completed_at = _utc_now()
             self.db.commit()
 
             # Audit log
@@ -209,8 +209,8 @@ class MLTrainerService:
             logger.error(f"Training job failed: {e}")
             job.status = "failed"
             job.error_message = str(e)
-            job.logs += f"[{datetime.datetime.utcnow().isoformat()}] ERROR: {str(e)}\n"
-            job.completed_at = datetime.datetime.utcnow()
+            job.logs += f"[{_utc_now().isoformat()}] ERROR: {str(e)}\n"
+            job.completed_at = _utc_now()
             self.db.commit()
             return job
 
@@ -234,7 +234,7 @@ class MLTrainerService:
             current_active.status = "archived"
 
         model.status = "active"
-        model.activated_at = datetime.datetime.utcnow()
+        model.activated_at = _utc_now()
         self.db.commit()
 
         # Audit
@@ -274,7 +274,7 @@ class MLTrainerService:
         # Update statuses
         current_active.status = "rolled_back"
         previous_model.status = "active"
-        previous_model.activated_at = datetime.datetime.utcnow()
+        previous_model.activated_at = _utc_now()
         self.db.commit()
 
         # Audit

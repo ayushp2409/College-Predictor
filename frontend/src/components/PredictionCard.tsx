@@ -2,7 +2,7 @@
 
 import { useState } from "react";
 import {
-  TrendingUp, Bookmark, BookmarkCheck, BarChart2,
+  Sparkles, TrendingUp, Bookmark, BookmarkCheck, BarChart2,
   ExternalLink, IndianRupee, MapPin, Building, Award, Info, ChevronDown, ChevronUp
 } from "lucide-react";
 import { PredictionItem } from "@/lib/api";
@@ -107,9 +107,9 @@ export default function PredictionCard({
         </div>
 
         {/* Key Cutoff Stats Grid */}
-        <div className="grid grid-cols-3 gap-2 py-2 border-y border-slate-100 text-center mb-3">
+        <div className="grid grid-cols-3 gap-2 py-2 border-y border-slate-100 text-center mb-2">
           <div>
-            <span className="text-[10px] text-slate-400 uppercase font-semibold block">Cutoff</span>
+            <span className="text-[10px] text-slate-400 uppercase font-semibold block">{item.year} Cutoff</span>
             <span className="text-sm font-extrabold text-slate-900">
               {item.closing_percentile.toFixed(2)}%
             </span>
@@ -131,6 +131,19 @@ export default function PredictionCard({
             </span>
           </div>
         </div>
+
+        {/* Projected 2025 Cutoff Pill */}
+        {item.projected_cutoff && (
+          <div className="flex items-center justify-between px-2.5 py-1.5 bg-gradient-to-r from-blue-50 to-indigo-50 border border-blue-100 rounded-lg text-xs mb-3">
+            <span className="text-[11px] font-bold text-blue-900 flex items-center gap-1">
+              <Sparkles className="w-3.5 h-3.5 text-blue-600" />
+              Projected {item.projected_year || 2025} Cutoff:
+            </span>
+            <span className="font-extrabold text-blue-800 font-mono text-xs">
+              {item.projected_cutoff.toFixed(2)}%
+            </span>
+          </div>
+        )}
 
         {/* Location & University Tags */}
         <div className="flex flex-wrap items-center gap-x-3 gap-y-1 text-xs text-slate-500 mb-2">
